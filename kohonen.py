@@ -5,60 +5,92 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
+import itertools
+import seaborn as sns 
+import statistics
+from statistics import mode
+import pprint
 
-#Leitura do arquivo
+
+#Lectura del archivo
 df = pd.read_csv('europe.csv')
 df.head()
+Data = df
 
-Data    = df.iloc[:,1:8]
-Country = df.iloc[:,0]
-#Estandarizando las variables
-X_std = StandardScaler().fit_transform(Data)
+#Normalizando los datos
+Atributos = ['Area','GDP','Inflation','Life.expect','Military','Pop.growth','Unemployment']
+Data[Atributos] = StandardScaler().fit_transform(Data[Atributos]) 
+
+X_data = Data.iloc[:,1:] #['Area','GDP','Inflation','Life.expect','Military','Pop.growth','Unemployment']
+Y_label = Data.iloc[:,0] #[Country]
+X_train, X_test, y_train, y_test = train_test_split(X_data, Y_label, test_size=0.0) #Train_size -> 100%
+
+
+def most_common(List):
+    return(mode(List))
+
+def Neurona_Activada_By_Country(Pais_Neuronas):
+    Moda_Neurona_Pais = dict()
+    '''Retorna la neurona que fue mas activada por un determinado pais'''
+    for key, value in Pais_Neuronas.items():
+        Moda_Neurona_Pais[key] = most_common(value)
+        
+    return Moda_Neurona_Pais
+    
+
+def Generate_Capa(K):
+    '''Genera un grid Kxk de neuronas en la capa de salida'''
+    K = list(range(K))
+    index_i_j = list(itertools.product(K, K))
+    Capa_Salida = dict()
+
+    for elemento in index_i_j:
+        Capa_Salida[elemento] = []
+
+    return Capa_Salida
+
+def Initialize_Weights(Capa, Data):
+    #Inicializa los pesos de las neuronas con muestras de los datos de entrada.
+    for key, value in Capa.items():
+        Capa[key] = Data.sample(1).values
+    return Capa
 
 def Neurona_Ganadora(Neuronas, Xp):
     
     '''Obtener la neurona ganadadora, o sea, que minimize
     la distancia a la observación Xp'''
     
-    k = Neuronas.shape[1]
-    Pos_j = 0
-    Pos_i = 0
-    Dist_Min = +np.inf
+    Dist_Min     = +np.inf
     Norma_Minima = 0
     
-    '''Slice 3D : [k,i,j]
-    k : Capa (de los pesos)
-    i : linha
-    j : coluna'''
-    
-    for j in range(k):
-
-        Norma_Linha_Parede = np.linalg.norm(Neuronas[:,:,j].T - Xp , axis=1)
-        Norma_Minima       = np.min(Norma_Linha_Parede)
-
-        if Norma_Minima < Dist_Min:
-            Dist_Min = Norma_Minima
-            Pos_i    = np.argmin(Norma_Linha_Parede)
-            Pos_j    = j
-            posicion_ganadora = (Pos_i, Pos_j)
+    #Percorro todos os indices em busca da menor norma.
+    for key, value in Neuronas.items():
+        
+        Norma_Euclidea = np.linalg.norm(Neuronas[key] - Xp)
+        #print('key : {0} - Norma : {1}'.format(key, Norma_Euclidea))
+        
+        if Norma_Euclidea < Dist_Min:
+            Dist_Min = Norma_Euclidea
+            posicion_ganadora_i_j = key
             
-    return posicion_ganadora, Dist_Min
+    return posicion_ganadora_i_j, Dist_Min
 
 
-def Encontrar_Vecinos(Neuronas, Pos_Ganadora, R):
+def Encontrar_Vecinos(Neuronas, Pos_Ganadora, R, K):
     
     '''Retorna los vecinos (i,j) que están a una distancia <= R de la celda en la posición ganadora (Pos_Ganadora)'''
     
-    k = Neuronas.shape[1]
     Lista_Vecinos = list()
     i_g, j_g      = Pos_Ganadora
     Distancia     = 0
-    
-    for i in range(k):
-        for j in range(k):
+
+    for i in range(K):
+        for j in range(K):
             if (i == i_g and j == j_g):
                 continue
             else:
+                #Calculo a distancia da célula ganhadora a todas as células da capa de salida
+                #Se a distancia entre elas for <=R então de fato é uma vizinha.
                 Distancia = np.linalg.norm(np.array((i_g, j_g)) - np.array((i, j)))
                 if (Distancia <= R):
                     Lista_Vecinos.append((i, j))
@@ -74,65 +106,99 @@ def Actualizar_Pesos_Vecinos(Neuronas, Xp, alpha, Pos_Ganadora, Vecinos):
     
     DeltaW = 0
 
-    for Punto in Vecinos:
+    for Coord_Punto in Vecinos:
         
         #Coordenadas del vecino 
-        i_v, j_v = Punto
+        i_v, j_v = Coord_Punto
         
         DeltaW = np.linalg.norm(np.array((i_g, j_g)) - np.array((i_v, j_v)))
-        V = np.exp(-2.0*DeltaW/R)
-        Neuronas[:, i_v, j_v] = Neuronas[:, i_v, j_v] + V*alpha*(Xp - Neuronas[:, i_v, j_v])
+        V = np.exp(-2.0*DeltaW/R) # o V = 1
+        Neuronas[Coord_Punto] = Neuronas[Coord_Punto] + V*alpha*(Xp - Neuronas[Coord_Punto])
     
     return Neuronas
 
 
 #Inicializar la capa de salida (K x K)
 K = 10
+Capa_Salida = Generate_Capa(K)
+Neuronas    = Initialize_Weights(Capa_Salida, X_train)
 
-#Inicializar los pesos de las neuronas con valores aleatorios con distribución uniforme:
-Ctd_atributos = X_std.shape[1] #(Area, GDP, Inflation, Life.expect, Military, Pop.growth, Unemployment)
-size_matrix = (Ctd_atributos, K, K)
-Neuronas = np.zeros(size_matrix)
-Neuronas[:,:,:] = np.random.normal(scale=0.25, size=size_matrix)
+#Inicializar el radio de vencidad R(0)
+R = K
+R0 = R
 
-#Inicializar el radio de vencidad
-R = K  #Diap (23/33)
-R0 = R #Diap (23/33)
+#Tasa de aprendizaje
+alpha0 = 0.2
+alpha = alpha0
 
-#Factor de aprendizaje
-alpha = 0.1
-
-#Inicializar épocas en cero.
-max_ctd_epocas = 500 * Ctd_atributos #Diap (23/33)
+#Definir el maximo de epocas
+MAX_EPOCAS = 700
 epoca = 0
 
-while epoca < max_ctd_epocas:
+#Almacena la celda activada dado un valor del conjunto de entrenamiento.
+Lista_Paises = list(Data['Country'])
+Pais_Activacion_Neurona = dict()
+for pais in Lista_Paises:
+    Pais_Activacion_Neurona[pais] = list()
     
-    for i in range(0, X_train.shape[0]):
+#Almacena la cantidad de veces que cada celda de la capa de salida es activada
+index_i_j = list(itertools.product(list(range(K)), list(range(K))))
+Grid = dict()
+for elemento in index_i_j:
+    Grid[elemento] = 0
+
+while epoca < MAX_EPOCAS:
+    
+    for i in range(0, Data.shape[0]):
         
         #Seleccionar un registro aleatorio de entrada Xp
-        Xp = X_train.sample(1).values
+        Entrada = X_train.sample(1)
+        Xp      = Entrada.values
+        Pais    = y_train[Entrada.index[0]]
         
         #Encontrar la neurona ganadora k_hat que tenga el vector de pesos W_k_hat más cercano a Xp.
         Pos_Ganadora, Dist_Ganadora = Neurona_Ganadora(Neuronas, Xp)
-        i_g, j_g = Pos_Ganadora
+        Grid[Pos_Ganadora] += 1
         
-        #Actualizar los pesos de las conexiones de las neurona ganadora
-        Neuronas[:, i_g, j_g] = Neuronas[:, i_g, j_g] + alpha*(Xp - Neuronas[:, i_g, j_g])
+        #Almacena la celda activada por un determinado país.
+        Pais_Activacion_Neurona[Pais].append(Pos_Ganadora)
+        
+        #Actualizar los pesos de la neurona ganadora
+        Neuronas[Pos_Ganadora] = Neuronas[Pos_Ganadora] + alpha*(Xp - Neuronas[Pos_Ganadora])
 
         #Actualizar los pesos de las conexiones de las neuronas vecinas
-        Vecinos = Encontrar_Vecinos(Neuronas, Pos_Ganadora, R)
+        Vecinos  = Encontrar_Vecinos(Neuronas, Pos_Ganadora, R, K)
         Neuronas = Actualizar_Pesos_Vecinos(Neuronas, Xp, alpha, Pos_Ganadora, Vecinos)
     
     #Incrementar épocas
     epoca += 1
     #Actualizar el radio de vecindad
-    R     = (max_ctd_epocas - epoca)*(R0/max_ctd_epocas)
-    #Actualizar el factor de aprendizaje
-    alpha = 0.1*(1 - epoca/max_ctd_epocas) 
-   
+    R     = (MAX_EPOCAS - epoca)*(R0/MAX_EPOCAS)
+    #Actualizar la tasa de aprendizaje
+    alpha = alpha0*(1 - epoca/MAX_EPOCAS) 
+    
+print("C'est fini.")
 
-# 3. Matriz U 
+
+
+#Plot heatmap 
+coordX = [coord[0] for coord in Grid.keys()]
+coordY = [coord[1] for coord in Grid.keys()]
+values = [val for val in Grid.values()]
+Grid_Dataframe = pd.DataFrame(list(zip(coordX, coordY,values)), columns = ['X', 'Y', 'Value'])
+table = Grid_Dataframe.pivot('Y', 'X', 'Value')
+fig, ax = plt.subplots(figsize=(6,6))  
+sns.heatmap(table,annot=True,fmt='d', linewidths=.5, ax=ax)
+ax.invert_yaxis()
+plt.show()
+
+
+Resultado = Neurona_Activada_By_Country(Pais_Activacion_Neurona)
+pprint.pprint(Resultado)
+
+
+
+# Plot Matriz U 
 '''La matriz U tiene, para cada nodo el promedio de la distancia euclidea entre el vector
 de pesos del nodo y el vector de pesos de los nodos vecinos'''
 
@@ -142,34 +208,36 @@ for i in range(K):
     
     for j in range(K):
         
-        #w = Neuronas[i,j,:] #Pesos de la celda (i,j)
-        w = Neuronas[:,i,j]
-        
+        w = Neuronas[(i,j)]
         suma_distancias = 0
         num_vecinos = 0
         
         #Determinando los vecinos de la celda (i,j)
+        "|  x   |(i,j+1)|   x   |"
+        "|(i-,j)| (i,j) |(i+1,j)|"
+        "|  x   |(i,j+1)|    x  |"
         
+        
+        #Verificando los limites de la fila 
         if i-1 >= 0:  
-            #suma_distancias += np.linalg.norm(w - Neuronas[i-1,j,:])
-            suma_distancias += np.linalg.norm(w - Neuronas[:,i-1,j])
+            suma_distancias += np.linalg.norm(w - Neuronas[(i-1,j)])
             num_vecinos += 1
         if i+1 <= K-1: 
-            #suma_distancias += np.linalg.norm(w - Neuronas[i+1,j,:])
-            suma_distancias += np.linalg.norm(w - Neuronas[:,i+1,j])
+            suma_distancias += np.linalg.norm(w - Neuronas[(i+1,j)])
             num_vecinos += 1
+        
+        #Verificando los limites de la columna    
         if j-1 >= 0:
-            #suma_distancias += np.linalg.norm(w - Neuronas[i,j-1,:])
-            suma_distancias += np.linalg.norm(w - Neuronas[:,i,j-1])
+            suma_distancias += np.linalg.norm(w - Neuronas[(i,j-1)])
             num_vecinos += 1
         if j+1 <= K-1:
-            #suma_distancias += np.linalg.norm(w - Neuronas[i,j+1,:])
-            suma_distancias += np.linalg.norm(w - Neuronas[:,i,j+1])
+            suma_distancias += np.linalg.norm(w - Neuronas[(i,j+1)])
             num_vecinos += 1
     
         Matriz_U[i][j] = suma_distancias / num_vecinos
 
 
 #https://en.wikipedia.org/wiki/U-matrix
-plt.imshow(Matriz_U, cmap='gray')  
+c = plt.imshow(Matriz_U, cmap='gray') 
+bar = plt.colorbar(c)
 plt.show()
