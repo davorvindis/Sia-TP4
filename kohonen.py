@@ -97,7 +97,7 @@ def Encontrar_Vecinos(Neuronas, Pos_Ganadora, R, K):
     return Lista_Vecinos
 
 
-def Actualizar_Pesos_Vecinos(Neuronas, Xp, alpha, Pos_Ganadora, Vecinos):
+def Actualizar_Pesos_Vecinos(Neuronas, Xp, alpha, Pos_Ganadora, Vecinos, R):
     
     '''Actualiza los pesos de las neuronas vecinas a la celda Pos_Ganadora'''
     
@@ -111,7 +111,7 @@ def Actualizar_Pesos_Vecinos(Neuronas, Xp, alpha, Pos_Ganadora, Vecinos):
         #Coordenadas del vecino 
         i_v, j_v = Coord_Punto
         
-        DeltaW = np.linalg.norm(np.array((i_g, j_g)) - np.array((i_v, j_v)))
+        DeltaW = np.sqrt((i_g - i_v)**2 + (j_g - j_v)**2)
         V = np.exp(-2.0*DeltaW/R) # o V = 1
         Neuronas[Coord_Punto] = Neuronas[Coord_Punto] + V*alpha*(Xp - Neuronas[Coord_Punto])
     
@@ -168,7 +168,7 @@ while epoca < MAX_EPOCAS:
 
         #Actualizar los pesos de las conexiones de las neuronas vecinas
         Vecinos  = Encontrar_Vecinos(Neuronas, Pos_Ganadora, R, K)
-        Neuronas = Actualizar_Pesos_Vecinos(Neuronas, Xp, alpha, Pos_Ganadora, Vecinos)
+        Neuronas = Actualizar_Pesos_Vecinos(Neuronas, Xp, alpha, Pos_Ganadora, Vecinos, R)
     
     #Incrementar épocas
     epoca += 1
